@@ -1,8 +1,9 @@
-from tkinter.messagebox import NO
-from typing import Dict, List, Set
+from typing import Dict, List
 import pandas as pd
 import math
 from queue import Queue
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 DATASET_PATH = "/Users/dmitry/Desktop/agaricus-lepiota.data"
 
@@ -53,7 +54,7 @@ class Tree_Leave:
         self.parent_branch: str | None = parent_branch  # value of parent leave attribute
         self.mushrooms: List[Mushroom] = mushrooms
         self.rest_attributes: List[str] = rest_attributes
-        self.branching_attribute: str
+        self.branching_attribute: str | None = None
         self.child_leaves: List[Tree_Leave] = list()
         pass
 
@@ -92,6 +93,9 @@ class Tree_Leave:
 
         if (best_attribute != None):
             if (len(self.mushrooms) != 0):
+                # Set branching attribute
+                self.branching_attribute = best_attribute
+
                 # Alloc list for childs
                 self.child_leaves: List[Tree_Leave] = []
 
@@ -164,7 +168,7 @@ class Tree:
 
         current_leave: Tree_Leave = self.root_leave
 
-        while (current_leave.child_leaves.count != 0):
+        while (current_leave.branching_attribute != None):
             current_leave = current_leave.decide(mushroom)
 
         return current_leave.get_class()
@@ -283,18 +287,49 @@ class Metrics:
 
 
 def get_metrics(decision_tree: Tree, samples: List[Mushroom]) -> Metrics:
+    true_positive_count: int = 0
+    false_negative_count: int = 0
+    false_positive_count: int = 0
+    true_negative_count: int = 0
 
-    pass
+    for sample in samples:
+        decided_class = decision_tree.decide(sample)
+
+        if (decided_class == "e" and sample.mush_class == "e"):
+            true_positive_count += 1
+        if (decided_class == "e" and sample.mush_class == "p"):
+            false_positive_count += 1
+        if (decided_class == "p" and sample.mush_class == "p"):
+            true_negative_count += 1
+        if (decided_class == "p" and sample.mush_class == "e"):
+            false_negative_count += 1
+
+    return Metrics(true_positive_count, false_positive_count, false_negative_count, true_negative_count)
 
 def paint_AUC_ROC(metrics: Metrics) -> None:
+    sns.set(font_scale=1.5)
+    sns.set_color_codes("muted")
 
-    pass
+    plt.figure(figsize=(10, 8))
+    fpr, tpr, thresholds = metrics.roc_curve(y_test, lr.predict_proba(X_test)[:,1], pos_label=1)
+    lw = 2
+    plt.plot(fpr, tpr, lw=lw, label='ROC curve ')
+    plt.plot([0, 1], [0, 1])
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('ROC curve')
+    plt.savefig("ROC.png")
+    plt.show()
 
 def paint_AUC_PR(metrics: Metrics) -> None:
 
     pass
 
 
+    # TODO Визуализировать дерево решений
+    # TODO Нарисовать AUC-ROC и AUC-PR
 def main():
     mushrooms: List[Mushroom] = list()
 
@@ -310,16 +345,17 @@ def main():
 
     tree: Tree = Tree(mushrooms, TARGET_COLUMNS)
 
-    leaves = tree.build_tree()
+    tree.build_tree()
 
-    for leave in leaves:
-        print(leave.get_class())
+    metrics: Metrics = get_metrics(tree, mushrooms)
 
-    # TODO Визуализировать дерево решений
-    # TODO Нарисовать accuracy, precision, recall
-    # TODO Нарисовать AUC-ROC и AUC-PR
+    print("Accuracy: ", metrics.get_accuracy())
+    print("Precision: ", metrics.get_precision())
+    print("Recall: ", metrics.get_recall())
 
-    pass
+    paint_AUC_ROC(metrics)
+
+    
 
 
 main()
