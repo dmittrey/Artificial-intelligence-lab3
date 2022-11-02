@@ -306,17 +306,57 @@ def get_metrics(decision_tree: Tree, samples: List[Mushroom]) -> Metrics:
 
     return Metrics(true_positive_count, false_positive_count, false_negative_count, true_negative_count)
 
-def paint_AUC_ROC(metrics: Metrics) -> None:
+# 1) Прогоняем порог положительного результата в порядке убывания
+# 2) Двигаемся вниз по листу обрабатывая по одному экземпляру за раз и убавляя порог на 0.01
+# 3) Считаем TPR и FPR
+
+# TPR = True Positives / All Positives
+# FPR = False Positives / All negatives
+def paint_AUC_ROC(samples: List[Mushroom], decision_tree: Tree) -> None:
+    pos_count: int = 0
+    neg_count: int = 0
+
+    coords = [(0,0)]
+    #FPR as horizontal x axis    
+    fp: int = 0
+    #TPR as vertical y axis
+    tp: int = 0
+
+    for sample in samples:
+        decided_class = decision_tree.decide(sample)
+
+        if (sample.mush_class == "e"):
+            pos_count += 1
+        else:
+            neg_count += 1 
+
+        if (decided_class == "e" and sample.mush_class == "e"):
+            tp += 1
+        if (decided_class == "e" and sample.mush_class == "p"):
+            fp += 1
+        # if (decided_class == "p" and sample.mush_class == "p"):
+            # true_negative_count += 1
+        # if (decided_class == "p" and sample.mush_class == "e"):
+            # false_negative_count += 1
+
+        coords.append((fp, tp))
+
+    # Запаковываем по парам значения положительно и отрицательно найденных
+    fp, tp = map(list, zip(*coords))
+
+    # Нормируем
+    tpr = [x / pos_count for x in tp]
+    fpr = [x / neg_count for x in fp]
+
     sns.set(font_scale=1.5)
     sns.set_color_codes("muted")
 
     plt.figure(figsize=(10, 8))
-    fpr, tpr, thresholds = metrics.roc_curve(y_test, lr.predict_proba(X_test)[:,1], pos_label=1)
     lw = 2
-    plt.plot(fpr, tpr, lw=lw, label='ROC curve ')
+    plt.plot(fpr, tpr, lw = lw, label='ROC curve ')
     plt.plot([0, 1], [0, 1])
-    plt.xlim([0.0, 1.0])
-    plt.ylim([0.0, 1.05])
+    plt.xlim([0.0, 1])
+    plt.ylim([0.0, 1])
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
     plt.title('ROC curve')
@@ -342,6 +382,7 @@ def main():
         mushroom_class = row[1][CLASS_COLUMN]
 
         mushrooms.append(Mushroom(mushroom_class, mushroom_attributes))
+        # Ввести массив метрик
 
     tree: Tree = Tree(mushrooms, TARGET_COLUMNS)
 
@@ -353,7 +394,7 @@ def main():
     print("Precision: ", metrics.get_precision())
     print("Recall: ", metrics.get_recall())
 
-    paint_AUC_ROC(metrics)
+    paint_AUC_ROC(mushrooms, tree)
 
     
 
