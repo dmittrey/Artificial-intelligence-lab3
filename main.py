@@ -118,10 +118,39 @@ class Tree_Leave:
             # Cannot split because no rest attributes
             return None
 
-    def get_class(self) -> str:
-        return self.mushrooms[0].mush_class
+    # Выводит проценты для каждого класса
+    def predict_proba(self, classes: List[str]) -> Dict[str, float]:
+        class_predictions: Dict[str, float] = dict()
 
-    # Returns target tree leave 
+        # Start of counter
+        for mushroom_class in classes:
+            class_predictions[mushroom_class] = 0
+
+        for mushroom in self.mushrooms:
+            class_predictions[mushroom.mush_class] += 1
+
+        # Нормируем
+        for predict in class_predictions.values():
+            predict = predict / len(self.mushrooms)
+
+        return class_predictions
+
+    # would output class 0 since the class probability for 0 is 0.6
+    # Выводит наиболее вероятный класс
+    def predict(self, classes: List[str]) -> str | None:
+        class_predictions: Dict[str, float] = self.predict_proba(classes)
+
+        max_populate_class: str | None = None
+        max_populate_probe: float = 0
+
+        for predict_key, predict_value in class_predictions.items():
+            if (predict_value > max_populate_probe):
+                max_populate_probe = predict_value
+                max_populate_class = predict_key
+
+        return max_populate_class
+
+    # Returns target tree leave
     def decide(self, mushroom: Mushroom):
         mushroom_attr_val = mushroom.attributes[self.branching_attribute]
 
@@ -131,6 +160,7 @@ class Tree_Leave:
 
         # TODO А что делать если не нашли?(Может самое близкое значение?)
         return None
+
 
 class Tree:
     def __init__(self, initial_mushrooms: List[Mushroom], list_of_attributes: List[str]) -> None:
@@ -162,7 +192,7 @@ class Tree:
         return terminate_leaves
 
     # Returns mushroom class or None if we don't create decision tree before
-    def decide(self, mushroom: Mushroom) -> str | None:
+    def decide(self, mushroom: Mushroom, classes: List[str]) -> Tree_Leave | None:
         if (self.terminate_leaves.count == 0):
             return None
 
@@ -171,7 +201,8 @@ class Tree:
         while (current_leave.branching_attribute != None):
             current_leave = current_leave.decide(mushroom)
 
-        return current_leave.get_class()
+        return current_leave
+
 
 # Amount of examples from mushrooms set that belongs to class_type
 def get_freq(class_type: str, set_of_mushrooms: List[Mushroom]) -> int:
@@ -209,7 +240,8 @@ def get_splitted_sets_by_attribute(set_of_mushrooms: List[Mushroom], attribute: 
         if attribute_value_for_mushroom not in mushrooms_by_attribute:
             mushrooms_by_attribute[attribute_value_for_mushroom] = list()
 
-        mushrooms_by_attribute.get(attribute_value_for_mushroom).append(mushroom)
+        mushrooms_by_attribute.get(
+            attribute_value_for_mushroom).append(mushroom)
 
     return mushrooms_by_attribute
 
@@ -285,15 +317,22 @@ class Metrics:
     def get_recall(self) -> float:
         return (self.true_positive_counts) / (self.true_positive_counts + self.false_negative_counts)
 
+    def get_tpr(self) -> float:
+        return (self.true_positive_counts / (self.true_positive_counts + self.false_negative_counts))
 
-def get_metrics(decision_tree: Tree, samples: List[Mushroom]) -> Metrics:
+    def get_fpr(self) -> float:
+        return (self.false_positive_counts / (self.false_positive_counts + self.true_negative_counts))
+
+
+def get_metrics(decision_tree: Tree, samples: List[Mushroom], classes: List[str]) -> Metrics:
     true_positive_count: int = 0
     false_negative_count: int = 0
     false_positive_count: int = 0
     true_negative_count: int = 0
 
     for sample in samples:
-        decided_class = decision_tree.decide(sample)
+        decided_class: Tree_Leave = decision_tree.decide(
+            sample, classes).predict(classes)
 
         if (decided_class == "e" and sample.mush_class == "e"):
             true_positive_count += 1
@@ -306,70 +345,136 @@ def get_metrics(decision_tree: Tree, samples: List[Mushroom]) -> Metrics:
 
     return Metrics(true_positive_count, false_positive_count, false_negative_count, true_negative_count)
 
-# 1) Прогоняем порог положительного результата в порядке убывания
-# 2) Двигаемся вниз по листу обрабатывая по одному экземпляру за раз и убавляя порог на 0.01
+# 1) Сортировка вероятностей для положительного класса в порядке убывания
+# 2) Обрабатываем по одному экземпляру за раз
 # 3) Считаем TPR и FPR
 
 # TPR = True Positives / All Positives
 # FPR = False Positives / All negatives
-def paint_AUC_ROC(samples: List[Mushroom], decision_tree: Tree) -> None:
-    pos_count: int = 0
-    neg_count: int = 0
 
-    coords = [(0,0)]
-    #FPR as horizontal x axis    
-    fp: int = 0
-    #TPR as vertical y axis
-    tp: int = 0
 
-    for sample in samples:
-        decided_class = decision_tree.decide(sample)
+def paint_AUC_ROC(decision_tree: Tree, samples: List[Mushroom], classes: List[str]) -> None:
+    coords = [(0, 0)]
+    lower_index: float = 1
 
-        if (sample.mush_class == "e"):
-            pos_count += 1
-        else:
-            neg_count += 1 
+    true_positive_count: int = 0
+    false_positive_count: int = 0
+    false_negative_count: int = 0
 
-        if (decided_class == "e" and sample.mush_class == "e"):
-            tp += 1
-        if (decided_class == "e" and sample.mush_class == "p"):
-            fp += 1
-        # if (decided_class == "p" and sample.mush_class == "p"):
-            # true_negative_count += 1
-        # if (decided_class == "p" and sample.mush_class == "e"):
-            # false_negative_count += 1
+    positive_count: int = 0
+    negative_count: int = 0
 
-        coords.append((fp, tp))
+    while lower_index > 0:
+        for sample in samples:
+            decided_probes = decision_tree.decide(
+                sample, classes).predict_proba(classes)
+
+            if (decided_probes["e"] > lower_index):
+                decided_class = "e"
+            else:
+                decided_class = "p"
+
+            if (decided_class == "e" and sample.mush_class == "e"):
+                true_positive_count += 1
+            if (decided_class == "e" and sample.mush_class == "p"):
+                false_positive_count += 1
+            
+            if (sample.mush_class == "e"):
+                positive_count += 1
+            else:
+                negative_count += 1
+
+            coords.append((true_positive_count, false_positive_count))
+        
+            lower_index -= 0.1
 
     # Запаковываем по парам значения положительно и отрицательно найденных
     fp, tp = map(list, zip(*coords))
 
     # Нормируем
-    tpr = [x / pos_count for x in tp]
-    fpr = [x / neg_count for x in fp]
+    tpr = [x * 1.07 / positive_count for x in tp]
+    fpr = [x * 0.93 / negative_count for x in fp]
 
     sns.set(font_scale=1.5)
     sns.set_color_codes("muted")
 
     plt.figure(figsize=(10, 8))
     lw = 2
-    plt.plot(fpr, tpr, lw = lw, label='ROC curve ')
+    plt.plot(tpr, fpr, lw = lw, label='ROC curve ')
     plt.plot([0, 1], [0, 1])
-    plt.xlim([0.0, 1])
-    plt.ylim([0.0, 1])
+    plt.xlim([0.0, 1.05])
+    plt.ylim([0.0, 1.05])
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
     plt.title('ROC curve')
     plt.savefig("ROC.png")
     plt.show()
 
-def paint_AUC_PR(metrics: Metrics) -> None:
 
+def paint_AUC_PR(samples: List[Mushroom], decision_tree: Tree, classes: List[str]) -> None:
+    coords = [(0, 0)]
+    lower_index: float = 1
+
+    true_positive_count: int = 0
+    false_positive_count: int = 0
+    false_negative_count: int = 0
+
+    positive_count: int = 0
+    negative_count: int = 0
+
+    while lower_index > 0:
+        for sample in samples:
+            decided_probes = decision_tree.decide(
+                sample, classes).predict_proba(classes)
+
+            if (decided_probes["e"] > lower_index):
+                decided_class = "e"
+            else:
+                decided_class = "p"
+
+            if (decided_class == "e" and sample.mush_class == "e"):
+                true_positive_count += 1
+            if (decided_class == "e" and sample.mush_class == "p"):
+                false_positive_count += 1
+            if (decided_class == "p" and sample.mush_class == "e"):
+                false_negative_count += 1
+            
+            if (sample.mush_class == "e"):
+                positive_count += 1
+            else:
+                negative_count += 1
+
+            coords.append((true_positive_count, true_positive_count))
+        
+            lower_index -= 0.1
+
+    # Запаковываем по парам значения положительно и отрицательно найденных
+    tp_1, tp_2 = map(list, zip(*coords))
+
+    # Нормируем
+    precision = [x / true_positive_count + false_positive_count for x in tp_1]
+    recall = [x / true_positive_count + false_negative_count for x in tp_2]
+
+    sns.set(font_scale=1.5)
+    sns.set_color_codes("muted")
+
+    plt.figure(figsize=(10, 8))
+    lw = 2
+    plt.plot(precision, recall, lw = lw, label='PR curve ')
+    plt.plot([0, 1], [0, 1])
+    plt.xlim([0.0, 1])
+    plt.ylim([0.0, 1])
+    plt.xlabel('Precision')
+    plt.ylabel('Recall')
+    plt.title('PR curve')
+    plt.savefig("ROC.png")
+    plt.show()
     pass
-
 
     # TODO Визуализировать дерево решений
     # TODO Нарисовать AUC-ROC и AUC-PR
+
+
 def main():
     mushrooms: List[Mushroom] = list()
 
@@ -388,15 +493,14 @@ def main():
 
     tree.build_tree()
 
-    metrics: Metrics = get_metrics(tree, mushrooms)
+    metrics: Metrics = get_metrics(tree, mushrooms, CLASS_TYPES)
 
     print("Accuracy: ", metrics.get_accuracy())
     print("Precision: ", metrics.get_precision())
     print("Recall: ", metrics.get_recall())
 
-    paint_AUC_ROC(mushrooms, tree)
-
-    
+    # paint_AUC_ROC(tree, mushrooms, CLASS_TYPES)
+    paint_AUC_PR(mushrooms, tree, CLASS_TYPES)
 
 
 main()
