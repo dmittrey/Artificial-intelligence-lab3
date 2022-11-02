@@ -1,8 +1,8 @@
 from tkinter.messagebox import NO
-from typing import List, Set
-from unittest import result
+from typing import Dict, List, Set
 import pandas as pd
 import math
+from queue import Queue
 
 DATASET_PATH = "/Users/dmitry/Desktop/agaricus-lepiota.data"
 
@@ -14,7 +14,7 @@ CLASS_COLUMN = "class"
 CLASS_TYPES = ["e", "p"]
 
 # Migrate to main method
-data = pd.read_csv(DATASET_PATH, sep=",", header=None)
+data = pd.read_csv(DATASET_PATH, sep=",", header=0)
 data.columns = ["class",
                 "cap-shape",
                 "cap-surface",
@@ -39,7 +39,6 @@ data.columns = ["class",
                 "population",
                 "habitat"]
 
-
 class Mushroom:
     def __init__(self, mush_class: str, attributes: dict) -> None:
         self.mush_class = mush_class
@@ -57,7 +56,6 @@ class Tree_Leave:
         self.mushrooms: Set[Mushroom] = mushrooms
         self.rest_attributes: List[str] = rest_attributes
         self.branching_attribute: str | None = None
-        self.child_leaves: List[Tree_Leave] = []
         pass
 
     def is_completed(self) -> bool:
@@ -85,6 +83,35 @@ class Tree_Leave:
 
         return max_attribute
 
+    # 1) Find best attribute
+    # 2) Create n leaves
+    # 3) Fill splitted sets in leaves
+    # 4) Return list of created leaves or None(no rest attributes or empty set)
+    def split_leave(self) -> List | None:
+        best_attribute: str | None = self.get_best_branching_attribute()
+
+        if (self.rest_attributes.count != 0):
+            if (len(self.mushrooms) != 0):
+                # Alloc list for childs
+                child_leaves: List[Tree_Leave] = []
+
+                # Found splitted sets of mushrooms by attribute
+                splitted_sets_of_mushrooms: Dict[str, Set[Mushroom]] = get_splitted_sets_by_attribute(self.mushrooms, best_attribute)
+
+                # Append child leaves
+                self.rest_attributes.remove(best_attribute)
+                for splitted_set_attr, splitted_set_val  in splitted_sets_of_mushrooms.items():
+                    child_leaves.append(Tree_Leave(splitted_set_attr, splitted_set_val, self.rest_attributes))
+
+                return child_leaves
+
+            else:
+                # Cannot split because set of mushrooms is empty
+                return None
+        else:
+            # Cannot split because no rest attributes
+            return None
+
 
 class Tree:
     def __init__(self, initial_mushrooms: Set[Mushroom], list_of_attributes: List[str]) -> None:
@@ -93,22 +120,36 @@ class Tree:
             None, initial_mushrooms, list_of_attributes)
         pass
 
-    # Returns false if we cannot split(no rest attributes or empty set)
-    def split_leave(self, leave: Tree_Leave) -> bool:
-        # Прервать если нарвались на пустое множество грибов
-        # Прервать если нарвались на пустое множество оставшихся атрибутов
-        
-        pass
+    # Return status of building
+    def build_tree(self) -> List[Tree_Leave]:
+        q: Queue[Tree_Leave] = Queue()
+        terminate_leaves = [] # Leaves that we cannot split
 
+        # Put root in queue
+        q.put(self.root_leave)
 
-# Кол-во примеров из мн-ва mushrooms которые принадлежат классу class_type
+        while(not q.empty()):
+            current_leave = q.get()
+
+            new_leaves = current_leave.split_leave()
+            
+            if new_leaves == None:
+                terminate_leaves.append(current_leave)
+            else:
+                for leave in new_leaves:
+                    q.put(leave)
+    
+        return terminate_leaves
+
+# Amount of examples from mushrooms set that belongs to class_type
 def get_freq(class_type: str, set_of_mushrooms: Set[Mushroom]) -> int:
     result: int = 0
 
     for val in set_of_mushrooms:
-        if (val.is_class(class_type)):
+        if (val.mush_class == class_type):
             result = result + 1
 
+    return result
 
 def get_info(set_of_mushrooms: Set[Mushroom]) -> float:
     result: float = 0
@@ -120,7 +161,7 @@ def get_info(set_of_mushrooms: Set[Mushroom]) -> float:
     return result
 
 
-def get_splitted_sets_by_attribute(set_of_mushrooms: Set[Mushroom], attribute: str) -> Set[Set[Mushroom]]:
+def get_splitted_sets_by_attribute(set_of_mushrooms: Set[Mushroom], attribute: str) -> Dict[str, Set[Mushroom]]:
     mushrooms_by_attribute: dict[str, Set[Mushroom]] = {}
 
     # Take dict<attr_value, set[Mushroom]>
@@ -162,12 +203,32 @@ def get_split_estimate(set_of_mushrooms: Set[Mushroom], splitted_sets_of_mushroo
     return result
 
 
-def get_gain_ration(set_of_mushrooms: Set[Mushroom], atribute: str):
-    splitted_sets_of_mushrooms: Set[Set[Mushroom]] = get_splitted_sets_by_attribute(
-        set_of_mushrooms, atribute)
+def get_gain_ration(set_of_mushrooms: Set[Mushroom], splitted_sets_of_mushrooms: Set[Set[Mushroom]]):
 
     return (get_info(set_of_mushrooms) - get_conditional_info(set_of_mushrooms, splitted_sets_of_mushrooms)) / \
         get_split_estimate(set_of_mushrooms, splitted_sets_of_mushrooms)
 
+def main():
+    mushrooms: Set[Mushroom] = set()
 
-def build_tree(tree_node):
+    # 1) Запарсить данные в множество грибов
+    for row in data.iterrows():
+        mushroom_attributes: Dict[str, Mushroom] = {}
+
+        for attribute in TARGET_COLUMNS:
+            mushroom_attributes[attribute] = row[1][attribute]
+
+        mushroom_class = row[1][CLASS_COLUMN]
+
+        mushrooms.add(Mushroom(mushroom_class, mushroom_attributes))
+
+    tree: Tree = Tree(mushrooms, TARGET_COLUMNS)
+
+    leaves = tree.build_tree()
+
+    # Подумать о том, а как мне это вообще визуализировать
+
+    print(mushrooms)
+    pass
+
+main()
