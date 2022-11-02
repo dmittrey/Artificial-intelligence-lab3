@@ -66,12 +66,14 @@ class Tree_Leave:
         if self.rest_attributes.count == 0:
             return None
 
-        max_attribute: str | None
-        max_gain_ratio: float | None
+        max_attribute: str | None = None
+        max_gain_ratio: float | None = None
 
         for current_attribute in self.rest_attributes:
+            splitted_sets_of_mushrooms: Dict[str, Set[Mushroom]] = get_splitted_sets_by_attribute(self.mushrooms, current_attribute)
+
             current_gain_ratio = get_gain_ration(
-                self.mushrooms, current_attribute)
+                self.mushrooms, splitted_sets_of_mushrooms)
 
             if (max_attribute == None or max_gain_ratio == None):
                 max_attribute = current_attribute
@@ -88,9 +90,10 @@ class Tree_Leave:
     # 3) Fill splitted sets in leaves
     # 4) Return list of created leaves or None(no rest attributes or empty set)
     def split_leave(self) -> List | None:
+        # Чтобы найти лучший атрибут
         best_attribute: str | None = self.get_best_branching_attribute()
 
-        if (self.rest_attributes.count != 0):
+        if (best_attribute != None):
             if (len(self.mushrooms) != 0):
                 # Alloc list for childs
                 child_leaves: List[Tree_Leave] = []
@@ -151,18 +154,21 @@ def get_freq(class_type: str, set_of_mushrooms: Set[Mushroom]) -> int:
 
     return result
 
+# Если мы нашли такой атрибут, чтобы не разбивать выборку, то кол-во информации минимально
 def get_info(set_of_mushrooms: Set[Mushroom]) -> float:
     result: float = 0
 
     for type in CLASS_TYPES:
-        result -= get_freq(type, set_of_mushrooms) / len(set_of_mushrooms) * \
-            math.log2(get_freq(type, set_of_mushrooms) / len(set_of_mushrooms))
+        freq_for_class = get_freq(type, set_of_mushrooms)
+        if (freq_for_class != 0):
+            result -= freq_for_class / len(set_of_mushrooms) * \
+                math.log2(freq_for_class / len(set_of_mushrooms))
 
     return result
 
 
 def get_splitted_sets_by_attribute(set_of_mushrooms: Set[Mushroom], attribute: str) -> Dict[str, Set[Mushroom]]:
-    mushrooms_by_attribute: dict[str, Set[Mushroom]] = {}
+    mushrooms_by_attribute: Dict[str, Set[Mushroom]] = dict()
 
     # Take dict<attr_value, set[Mushroom]>
     for mushroom in set_of_mushrooms:
@@ -174,39 +180,51 @@ def get_splitted_sets_by_attribute(set_of_mushrooms: Set[Mushroom], attribute: s
 
         mushrooms_by_attribute.get(attribute_value_for_mushroom).add(mushroom)
 
-    result: Set[Set[Mushroom]] = []
+    return mushrooms_by_attribute
 
-    # Put sets of same mushrooms to general set
-    for set_of_same_mushrooms in mushrooms_by_attribute.values():
-        result.add(set_of_same_mushrooms)
+    # result: List[Set[Mushroom]] = list()
+
+    # # Put sets of same mushrooms to general set
+    # for set_of_same_mushrooms in mushrooms_by_attribute.values():
+    #     result.append(set_of_same_mushrooms)
+
+    # return result
+
+
+def get_conditional_info(set_of_mushrooms: Set[Mushroom], splitted_sets_of_mushrooms: Dict[str, Set[Mushroom]]) -> float:
+    result: float = 0
+
+    for splitted_set in splitted_sets_of_mushrooms.values():
+        result += len(splitted_set) / len(set_of_mushrooms) * get_info(splitted_set)
 
     return result
 
 
-def get_conditional_info(set_of_mushrooms: Set[Mushroom], splitted_sets_of_mushrooms: Set[Set[Mushroom]]) -> float:
+def get_split_estimate(set_of_mushrooms: Set[Mushroom], splitted_sets_of_mushrooms: Dict[str, Set[Mushroom]]) -> float:
     result: float = 0
 
-    for splitted_set in splitted_sets_of_mushrooms:
-        result += len(splitted_set) / len(set_of_mushrooms) * \
-            get_info(splitted_set)
+    # print("\n\n")
 
-    return result
-
-
-def get_split_estimate(set_of_mushrooms: Set[Mushroom], splitted_sets_of_mushrooms: Set[Set[Mushroom]]) -> float:
-    result: float = 0
-
-    for splitted_set in splitted_sets_of_mushrooms:
+    for splitted_set in splitted_sets_of_mushrooms.values():
         result -= len(splitted_set)/len(set_of_mushrooms) * \
             math.log2(len(splitted_set)/len(set_of_mushrooms))
 
+        # print(len(splitted_set))
+        # print(len(set_of_mushrooms))
+        # print(result)
+
     return result
 
 
-def get_gain_ration(set_of_mushrooms: Set[Mushroom], splitted_sets_of_mushrooms: Set[Set[Mushroom]]):
-
-    return (get_info(set_of_mushrooms) - get_conditional_info(set_of_mushrooms, splitted_sets_of_mushrooms)) / \
-        get_split_estimate(set_of_mushrooms, splitted_sets_of_mushrooms)
+def get_gain_ration(set_of_mushrooms: Set[Mushroom], splitted_sets_of_mushrooms: Dict[str, Set[Mushroom]]) -> float:
+    info = get_info(set_of_mushrooms)
+    conditional_info = get_conditional_info(set_of_mushrooms, splitted_sets_of_mushrooms)
+    split_estimate = get_split_estimate(set_of_mushrooms, splitted_sets_of_mushrooms) # TODO  Что делать когда тут 0?
+    
+    if (split_estimate == 0):
+        return 0
+    else:
+        return (info - conditional_info) / split_estimate
 
 def main():
     mushrooms: Set[Mushroom] = set()
