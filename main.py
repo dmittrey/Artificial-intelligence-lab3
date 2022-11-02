@@ -39,27 +39,23 @@ data.columns = ["class",
                 "population",
                 "habitat"]
 
+
 class Mushroom:
     def __init__(self, mush_class: str, attributes: dict) -> None:
         self.mush_class = mush_class
         self.attributes = attributes
         pass
 
-    def is_class(self, class_name: str) -> bool:
-        return class_name == self.mush_class
-
 
 class Tree_Leave:
-    def __init__(self, parent_branch: str | None, mushrooms: Set[Mushroom], rest_attributes: List[str]) -> None:
+    def __init__(self, parent_branch: str | None, mushrooms: List[Mushroom], rest_attributes: List[str]) -> None:
         # May be Null if it is root
         self.parent_branch: str | None = parent_branch  # value of parent leave attribute
-        self.mushrooms: Set[Mushroom] = mushrooms
+        self.mushrooms: List[Mushroom] = mushrooms
         self.rest_attributes: List[str] = rest_attributes
-        self.branching_attribute: str | None = None
+        self.branching_attribute: str
+        self.child_leaves: List[Tree_Leave] = list()
         pass
-
-    def is_completed(self) -> bool:
-        return self.branching_attribute != None
 
     # Return None if we don't have rest attributes
     def get_best_branching_attribute(self) -> str | None:
@@ -70,7 +66,8 @@ class Tree_Leave:
         max_gain_ratio: float | None = None
 
         for current_attribute in self.rest_attributes:
-            splitted_sets_of_mushrooms: Dict[str, Set[Mushroom]] = get_splitted_sets_by_attribute(self.mushrooms, current_attribute)
+            splitted_sets_of_mushrooms: Dict[str, List[Mushroom]] = get_splitted_sets_by_attribute(
+                self.mushrooms, current_attribute)
 
             current_gain_ratio = get_gain_ration(
                 self.mushrooms, splitted_sets_of_mushrooms)
@@ -96,17 +93,19 @@ class Tree_Leave:
         if (best_attribute != None):
             if (len(self.mushrooms) != 0):
                 # Alloc list for childs
-                child_leaves: List[Tree_Leave] = []
+                self.child_leaves: List[Tree_Leave] = []
 
                 # Found splitted sets of mushrooms by attribute
-                splitted_sets_of_mushrooms: Dict[str, Set[Mushroom]] = get_splitted_sets_by_attribute(self.mushrooms, best_attribute)
+                splitted_sets_of_mushrooms: Dict[str, List[Mushroom]] = get_splitted_sets_by_attribute(
+                    self.mushrooms, best_attribute)
 
                 # Append child leaves
                 self.rest_attributes.remove(best_attribute)
-                for splitted_set_attr, splitted_set_val  in splitted_sets_of_mushrooms.items():
-                    child_leaves.append(Tree_Leave(splitted_set_attr, splitted_set_val, self.rest_attributes))
+                for splitted_set_attr, splitted_set_val in splitted_sets_of_mushrooms.items():
+                    self.child_leaves.append(Tree_Leave(
+                        splitted_set_attr, splitted_set_val, self.rest_attributes))
 
-                return child_leaves
+                return self.child_leaves
 
             else:
                 # Cannot split because set of mushrooms is empty
@@ -115,37 +114,63 @@ class Tree_Leave:
             # Cannot split because no rest attributes
             return None
 
+    def get_class(self) -> str:
+        return self.mushrooms[0].mush_class
+
+    # Returns target tree leave 
+    def decide(self, mushroom: Mushroom):
+        mushroom_attr_val = mushroom.attributes[self.branching_attribute]
+
+        for child in self.child_leaves:
+            if child.parent_branch == mushroom_attr_val:
+                return child
+
+        # TODO А что делать если не нашли?(Может самое близкое значение?)
+        return None
 
 class Tree:
-    def __init__(self, initial_mushrooms: Set[Mushroom], list_of_attributes: List[str]) -> None:
-        self.initial_mushrooms: Set[Mushroom] = initial_mushrooms
+    def __init__(self, initial_mushrooms: List[Mushroom], list_of_attributes: List[str]) -> None:
+        self.initial_mushrooms: List[Mushroom] = initial_mushrooms
         self.root_leave: List[Tree_Leave] = Tree_Leave(
             None, initial_mushrooms, list_of_attributes)
+        self.terminate_leaves: List[Tree_Leave] = list()
         pass
 
     # Return status of building
     def build_tree(self) -> List[Tree_Leave]:
         q: Queue[Tree_Leave] = Queue()
-        terminate_leaves = [] # Leaves that we cannot split
+        terminate_leaves = []  # Leaves that we cannot split
 
         # Put root in queue
         q.put(self.root_leave)
 
-        while(not q.empty()):
+        while (not q.empty()):
             current_leave = q.get()
 
             new_leaves = current_leave.split_leave()
-            
+
             if new_leaves == None:
                 terminate_leaves.append(current_leave)
             else:
                 for leave in new_leaves:
                     q.put(leave)
-    
+
         return terminate_leaves
 
+    # Returns mushroom class or None if we don't create decision tree before
+    def decide(self, mushroom: Mushroom) -> str | None:
+        if (self.terminate_leaves.count == 0):
+            return None
+
+        current_leave: Tree_Leave = self.root_leave
+
+        while (current_leave.child_leaves.count != 0):
+            current_leave = current_leave.decide(mushroom)
+
+        return current_leave.get_class()
+
 # Amount of examples from mushrooms set that belongs to class_type
-def get_freq(class_type: str, set_of_mushrooms: Set[Mushroom]) -> int:
+def get_freq(class_type: str, set_of_mushrooms: List[Mushroom]) -> int:
     result: int = 0
 
     for val in set_of_mushrooms:
@@ -155,7 +180,9 @@ def get_freq(class_type: str, set_of_mushrooms: Set[Mushroom]) -> int:
     return result
 
 # Если мы нашли такой атрибут, чтобы не разбивать выборку, то кол-во информации минимально
-def get_info(set_of_mushrooms: Set[Mushroom]) -> float:
+
+
+def get_info(set_of_mushrooms: List[Mushroom]) -> float:
     result: float = 0
 
     for type in CLASS_TYPES:
@@ -167,8 +194,8 @@ def get_info(set_of_mushrooms: Set[Mushroom]) -> float:
     return result
 
 
-def get_splitted_sets_by_attribute(set_of_mushrooms: Set[Mushroom], attribute: str) -> Dict[str, Set[Mushroom]]:
-    mushrooms_by_attribute: Dict[str, Set[Mushroom]] = dict()
+def get_splitted_sets_by_attribute(set_of_mushrooms: List[Mushroom], attribute: str) -> Dict[str, List[Mushroom]]:
+    mushrooms_by_attribute: Dict[str, List[Mushroom]] = dict()
 
     # Take dict<attr_value, set[Mushroom]>
     for mushroom in set_of_mushrooms:
@@ -176,9 +203,9 @@ def get_splitted_sets_by_attribute(set_of_mushrooms: Set[Mushroom], attribute: s
 
         # If we not found key(some value of attribute)
         if attribute_value_for_mushroom not in mushrooms_by_attribute:
-            mushrooms_by_attribute[attribute_value_for_mushroom] = set()
+            mushrooms_by_attribute[attribute_value_for_mushroom] = list()
 
-        mushrooms_by_attribute.get(attribute_value_for_mushroom).add(mushroom)
+        mushrooms_by_attribute.get(attribute_value_for_mushroom).append(mushroom)
 
     return mushrooms_by_attribute
 
@@ -191,16 +218,17 @@ def get_splitted_sets_by_attribute(set_of_mushrooms: Set[Mushroom], attribute: s
     # return result
 
 
-def get_conditional_info(set_of_mushrooms: Set[Mushroom], splitted_sets_of_mushrooms: Dict[str, Set[Mushroom]]) -> float:
+def get_conditional_info(set_of_mushrooms: List[Mushroom], splitted_sets_of_mushrooms: Dict[str, List[Mushroom]]) -> float:
     result: float = 0
 
     for splitted_set in splitted_sets_of_mushrooms.values():
-        result += len(splitted_set) / len(set_of_mushrooms) * get_info(splitted_set)
+        result += len(splitted_set) / len(set_of_mushrooms) * \
+            get_info(splitted_set)
 
     return result
 
 
-def get_split_estimate(set_of_mushrooms: Set[Mushroom], splitted_sets_of_mushrooms: Dict[str, Set[Mushroom]]) -> float:
+def get_split_estimate(set_of_mushrooms: List[Mushroom], splitted_sets_of_mushrooms: Dict[str, List[Mushroom]]) -> float:
     result: float = 0
 
     # print("\n\n")
@@ -216,20 +244,60 @@ def get_split_estimate(set_of_mushrooms: Set[Mushroom], splitted_sets_of_mushroo
     return result
 
 
-def get_gain_ration(set_of_mushrooms: Set[Mushroom], splitted_sets_of_mushrooms: Dict[str, Set[Mushroom]]) -> float:
+def get_gain_ration(set_of_mushrooms: List[Mushroom], splitted_sets_of_mushrooms: Dict[str, List[Mushroom]]) -> float:
     info = get_info(set_of_mushrooms)
-    conditional_info = get_conditional_info(set_of_mushrooms, splitted_sets_of_mushrooms)
-    split_estimate = get_split_estimate(set_of_mushrooms, splitted_sets_of_mushrooms) # TODO  Что делать когда тут 0?
-    
+    conditional_info = get_conditional_info(
+        set_of_mushrooms, splitted_sets_of_mushrooms)
+    split_estimate = get_split_estimate(
+        set_of_mushrooms, splitted_sets_of_mushrooms)  # TODO  Что делать когда тут 0?
+
     if (split_estimate == 0):
         return 0
     else:
         return (info - conditional_info) / split_estimate
 
-def main():
-    mushrooms: Set[Mushroom] = set()
 
-    # 1) Запарсить данные в множество грибов
+class Metrics:
+    def __init__(self, true_positive_counts: int, false_positive_counts: int, false_negative_counts: int, true_negative_counts: int) -> None:
+        self.true_positive_counts = true_positive_counts
+        self.false_positive_counts = false_positive_counts
+        self.false_negative_counts = false_negative_counts
+        self.true_negative_counts = true_negative_counts
+        pass
+
+    # Просто доля верно предсказанных попаданий
+    def get_accuracy(self) -> float:
+        return (self.true_positive_counts + self.true_negative_counts) / \
+            (self.true_positive_counts + self.true_negative_counts +
+             self.false_positive_counts + self.false_negative_counts)
+
+    # Метрика точности
+    # Доля объектов, названных и являющихся положительными
+    def get_precision(self) -> float:
+        return (self.true_positive_counts) / (self.true_positive_counts + self.false_positive_counts)
+
+    # Метрика полноты
+    # Доля обхектов положительного класса, которую удалось найти
+    def get_recall(self) -> float:
+        return (self.true_positive_counts) / (self.true_positive_counts + self.false_negative_counts)
+
+
+def get_metrics(decision_tree: Tree, samples: List[Mushroom]) -> Metrics:
+
+    pass
+
+def paint_AUC_ROC(metrics: Metrics) -> None:
+
+    pass
+
+def paint_AUC_PR(metrics: Metrics) -> None:
+
+    pass
+
+
+def main():
+    mushrooms: List[Mushroom] = list()
+
     for row in data.iterrows():
         mushroom_attributes: Dict[str, Mushroom] = {}
 
@@ -238,15 +306,20 @@ def main():
 
         mushroom_class = row[1][CLASS_COLUMN]
 
-        mushrooms.add(Mushroom(mushroom_class, mushroom_attributes))
+        mushrooms.append(Mushroom(mushroom_class, mushroom_attributes))
 
     tree: Tree = Tree(mushrooms, TARGET_COLUMNS)
 
     leaves = tree.build_tree()
 
-    # Подумать о том, а как мне это вообще визуализировать
+    for leave in leaves:
+        print(leave.get_class())
 
-    print(mushrooms)
+    # TODO Визуализировать дерево решений
+    # TODO Нарисовать accuracy, precision, recall
+    # TODO Нарисовать AUC-ROC и AUC-PR
+
     pass
+
 
 main()
