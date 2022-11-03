@@ -157,8 +157,6 @@ class Tree_Leave:
         for child in self.child_leaves:
             if child.parent_branch == mushroom_attr_val:
                 return child
-
-        # TODO А что делать если не нашли?(Может самое близкое значение?)
         return None
 
 
@@ -244,14 +242,6 @@ def get_splitted_sets_by_attribute(set_of_mushrooms: List[Mushroom], attribute: 
             attribute_value_for_mushroom).append(mushroom)
 
     return mushrooms_by_attribute
-
-    # result: List[Set[Mushroom]] = list()
-
-    # # Put sets of same mushrooms to general set
-    # for set_of_same_mushrooms in mushrooms_by_attribute.values():
-    #     result.append(set_of_same_mushrooms)
-
-    # return result
 
 
 def get_conditional_info(set_of_mushrooms: List[Mushroom], splitted_sets_of_mushrooms: Dict[str, List[Mushroom]]) -> float:
@@ -488,6 +478,5 @@ def main():
 
     paint_AUC_ROC(tree, mushrooms, CLASS_TYPES)
     paint_AUC_PR(tree, mushrooms, CLASS_TYPES)
-
 
 main()
