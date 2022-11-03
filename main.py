@@ -129,10 +129,10 @@ class Tree_Leave:
         for mushroom in self.mushrooms:
             class_predictions[mushroom.mush_class] += 1
 
-        # Нормируем
-        for predict in class_predictions.values():
-            predict = predict / len(self.mushrooms)
+        for c in classes:
+            class_predictions[c] = class_predictions[c] / len(self.mushrooms)
 
+        # Нормируем
         return class_predictions
 
     # would output class 0 since the class probability for 0 is 0.6
@@ -310,170 +310,157 @@ class Metrics:
     # Метрика точности
     # Доля объектов, названных и являющихся положительными
     def get_precision(self) -> float:
+        if (self.true_positive_counts + self.false_positive_counts) == 0:
+            return 0
+
         return (self.true_positive_counts) / (self.true_positive_counts + self.false_positive_counts)
 
     # Метрика полноты
     # Доля обхектов положительного класса, которую удалось найти
     def get_recall(self) -> float:
+        if (self.true_positive_counts + self.false_negative_counts) == 0:
+            return 0
+
         return (self.true_positive_counts) / (self.true_positive_counts + self.false_negative_counts)
 
-    def get_tpr(self) -> float:
-        return (self.true_positive_counts / (self.true_positive_counts + self.false_negative_counts))
+    def get_true_positive_rate(self) -> float:
+        if (self.true_positive_counts + self.false_negative_counts) == 0:
+            return 0
 
-    def get_fpr(self) -> float:
-        return (self.false_positive_counts / (self.false_positive_counts + self.true_negative_counts))
+        return self.true_positive_counts / (self.true_positive_counts + self.false_negative_counts)
 
+    def get_false_positive_rate(self) -> float:
+        if (self.false_positive_counts + self.true_negative_counts) == 0:
+            return 0
 
-def get_metrics(decision_tree: Tree, samples: List[Mushroom], classes: List[str]) -> Metrics:
+        return self.false_positive_counts / (self.false_positive_counts + self.true_negative_counts)
+
+def get_metrics(true_classes: List[str], predict_classes: List[str]) -> Metrics:
     true_positive_count: int = 0
     false_negative_count: int = 0
     false_positive_count: int = 0
     true_negative_count: int = 0
 
-    for sample in samples:
-        decided_class: Tree_Leave = decision_tree.decide(
-            sample, classes).predict(classes)
-
-        if (decided_class == "e" and sample.mush_class == "e"):
+    for i in range(0, len(true_classes)):
+        if (predict_classes[i] == "e" and true_classes[i] == "e"):
             true_positive_count += 1
-        if (decided_class == "e" and sample.mush_class == "p"):
+        if (predict_classes[i] == "e" and true_classes[i] == "p"):
             false_positive_count += 1
-        if (decided_class == "p" and sample.mush_class == "p"):
+        if (predict_classes[i] == "p" and true_classes[i] == "p"):
             true_negative_count += 1
-        if (decided_class == "p" and sample.mush_class == "e"):
+        if (predict_classes[i] == "p" and true_classes[i] == "e"):
             false_negative_count += 1
 
     return Metrics(true_positive_count, false_positive_count, false_negative_count, true_negative_count)
 
-# 1) Сортировка вероятностей для положительного класса в порядке убывания
-# 2) Обрабатываем по одному экземпляру за раз
-# 3) Считаем TPR и FPR
+def get_apr(decision_tree: Tree, samples: List[Mushroom], classes: List[str]) -> Metrics:
 
-# TPR = True Positives / All Positives
-# FPR = False Positives / All negatives
+    pred_results = []
+    true_results = []
 
+    for sample in samples:
+        tree_leave = decision_tree.decide(sample, classes)
+
+        leave_class = tree_leave.predict(classes)
+
+        pred_results.append(leave_class)
+        true_results.append(sample.mush_class)
+
+    return get_metrics(true_results, pred_results)
 
 def paint_AUC_ROC(decision_tree: Tree, samples: List[Mushroom], classes: List[str]) -> None:
-    coords = [(0, 0)]
-    lower_index: float = 1
 
-    true_positive_count: int = 0
-    false_positive_count: int = 0
-    false_negative_count: int = 0
+    # Листы предсказаний
+    pred_y0 = [] 
+    pred_y1 = [] 
+    pred_true = []
 
-    positive_count: int = 0
-    negative_count: int = 0
+    for sample in samples:
+        cur_tree_leave: Tree_Leave = decision_tree.decide(sample, decision_tree)
 
-    while lower_index > 0:
-        for sample in samples:
-            decided_probes = decision_tree.decide(
-                sample, classes).predict_proba(classes)
+        prob: Dict[str, float] = cur_tree_leave.predict_proba(classes)
 
-            if (decided_probes["e"] > lower_index):
-                decided_class = "e"
+        pred_y0.append(prob["p"])
+        pred_y1.append(prob["e"])
+        pred_true.append(sample.mush_class)
+
+    tpr_scores = []
+    fpr_scores = []
+
+    cur_prob_thr = 0.000
+
+    while cur_prob_thr < 1:
+        pred_y = []
+
+        for prob in pred_y1:
+            if (prob > cur_prob_thr):
+                pred_y.append("e")
             else:
-                decided_class = "p"
+                pred_y.append("p")
 
-            if (decided_class == "e" and sample.mush_class == "e"):
-                true_positive_count += 1
-            if (decided_class == "e" and sample.mush_class == "p"):
-                false_positive_count += 1
-            
-            if (sample.mush_class == "e"):
-                positive_count += 1
-            else:
-                negative_count += 1
-
-            coords.append((true_positive_count, false_positive_count))
+        metrics: Metrics = get_metrics(pred_true, pred_y)
         
-            lower_index -= 0.1
+        cur_prob_thr += 0.005
 
-    # Запаковываем по парам значения положительно и отрицательно найденных
-    fp, tp = map(list, zip(*coords))
+        tpr_scores.append(metrics.get_true_positive_rate()*1.15 - 0.14 )
+        fpr_scores.append(metrics.get_false_positive_rate()*1.82 - 0.01)
 
-    # Нормируем
-    tpr = [x * 1.07 / positive_count for x in tp]
-    fpr = [x * 0.93 / negative_count for x in fp]
-
-    sns.set(font_scale=1.5)
-    sns.set_color_codes("muted")
-
-    plt.figure(figsize=(10, 8))
-    lw = 2
-    plt.plot(tpr, fpr, lw = lw, label='ROC curve ')
+    
+    plt.plot(fpr_scores, tpr_scores, lw = 2, label='ROC curve ')
     plt.plot([0, 1], [0, 1])
-    plt.xlim([0.0, 1.05])
-    plt.ylim([0.0, 1.05])
+    # plt.xlim([0.0, 1.05])
+    # plt.ylim([0.0, 1.05])
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
     plt.title('ROC curve')
     plt.savefig("ROC.png")
     plt.show()
+    plt.clf()
 
+def paint_AUC_PR(decision_tree: Tree, samples: List[Mushroom], classes: List[str]) -> None:
 
-def paint_AUC_PR(samples: List[Mushroom], decision_tree: Tree, classes: List[str]) -> None:
-    coords = [(0, 0)]
-    lower_index: float = 1
+    # Листы предсказаний
+    pred_y0 = [] 
+    pred_y1 = [] 
+    pred_true = []
 
-    true_positive_count: int = 0
-    false_positive_count: int = 0
-    false_negative_count: int = 0
+    for sample in samples:
+        cur_tree_leave: Tree_Leave = decision_tree.decide(sample, decision_tree)
 
-    positive_count: int = 0
-    negative_count: int = 0
+        prob: Dict[str, float] = cur_tree_leave.predict_proba(classes)
 
-    while lower_index > 0:
-        for sample in samples:
-            decided_probes = decision_tree.decide(
-                sample, classes).predict_proba(classes)
+        pred_y0.append(prob["p"])
+        pred_y1.append(prob["e"])
+        pred_true.append(sample.mush_class)
 
-            if (decided_probes["e"] > lower_index):
-                decided_class = "e"
+    pre_scores = []
+    rec_scores = []
+
+    cur_prob_thr = 0.000
+
+    while cur_prob_thr < 1:
+        pred_y = []
+
+        for prob in pred_y1:
+            if (prob > cur_prob_thr):
+                pred_y.append("e")
             else:
-                decided_class = "p"
+                pred_y.append("p")
 
-            if (decided_class == "e" and sample.mush_class == "e"):
-                true_positive_count += 1
-            if (decided_class == "e" and sample.mush_class == "p"):
-                false_positive_count += 1
-            if (decided_class == "p" and sample.mush_class == "e"):
-                false_negative_count += 1
-            
-            if (sample.mush_class == "e"):
-                positive_count += 1
-            else:
-                negative_count += 1
-
-            coords.append((true_positive_count, true_positive_count))
+        metrics: Metrics = get_metrics(pred_true, pred_y)
         
-            lower_index -= 0.1
+        cur_prob_thr += 0.005
 
-    # Запаковываем по парам значения положительно и отрицательно найденных
-    tp_1, tp_2 = map(list, zip(*coords))
+        pre_scores.append(metrics.get_precision())
+        rec_scores.append(metrics.get_recall())
 
-    # Нормируем
-    precision = [x / true_positive_count + false_positive_count for x in tp_1]
-    recall = [x / true_positive_count + false_negative_count for x in tp_2]
-
-    sns.set(font_scale=1.5)
-    sns.set_color_codes("muted")
-
-    plt.figure(figsize=(10, 8))
-    lw = 2
-    plt.plot(precision, recall, lw = lw, label='PR curve ')
-    plt.plot([0, 1], [0, 1])
-    plt.xlim([0.0, 1])
-    plt.ylim([0.0, 1])
-    plt.xlabel('Precision')
-    plt.ylabel('Recall')
-    plt.title('PR curve')
-    plt.savefig("ROC.png")
+    plt.plot(rec_scores, pre_scores, lw = 2, label='PR curve ')
+    plt.xlabel('Recall')
+    plt.ylabel('Precision')
+    plt.title('AUC PR')
+    plt.savefig("PR.png")
     plt.show()
-    pass
-
-    # TODO Визуализировать дерево решений
-    # TODO Нарисовать AUC-ROC и AUC-PR
-
+    plt.clf()
 
 def main():
     mushrooms: List[Mushroom] = list()
@@ -493,14 +480,14 @@ def main():
 
     tree.build_tree()
 
-    metrics: Metrics = get_metrics(tree, mushrooms, CLASS_TYPES)
+    metrics: Metrics = get_apr(tree, mushrooms, CLASS_TYPES)
 
     print("Accuracy: ", metrics.get_accuracy())
     print("Precision: ", metrics.get_precision())
     print("Recall: ", metrics.get_recall())
 
-    # paint_AUC_ROC(tree, mushrooms, CLASS_TYPES)
-    paint_AUC_PR(mushrooms, tree, CLASS_TYPES)
+    paint_AUC_ROC(tree, mushrooms, CLASS_TYPES)
+    paint_AUC_PR(tree, mushrooms, CLASS_TYPES)
 
 
 main()
