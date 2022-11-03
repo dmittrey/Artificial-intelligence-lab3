@@ -325,6 +325,7 @@ class Metrics:
 
         return self.false_positive_counts / (self.false_positive_counts + self.true_negative_counts)
 
+
 def get_metrics(true_classes: List[str], predict_classes: List[str]) -> Metrics:
     true_positive_count: int = 0
     false_negative_count: int = 0
@@ -343,6 +344,7 @@ def get_metrics(true_classes: List[str], predict_classes: List[str]) -> Metrics:
 
     return Metrics(true_positive_count, false_positive_count, false_negative_count, true_negative_count)
 
+
 def get_apr(decision_tree: Tree, samples: List[Mushroom], classes: List[str]) -> Metrics:
 
     pred_results = []
@@ -358,15 +360,17 @@ def get_apr(decision_tree: Tree, samples: List[Mushroom], classes: List[str]) ->
 
     return get_metrics(true_results, pred_results)
 
+
 def paint_AUC_ROC(decision_tree: Tree, samples: List[Mushroom], classes: List[str]) -> None:
 
     # Листы предсказаний
-    pred_y0 = [] 
-    pred_y1 = [] 
+    pred_y0 = []
+    pred_y1 = []
     pred_true = []
 
     for sample in samples:
-        cur_tree_leave: Tree_Leave = decision_tree.decide(sample, decision_tree)
+        cur_tree_leave: Tree_Leave = decision_tree.decide(
+            sample, decision_tree)
 
         prob: Dict[str, float] = cur_tree_leave.predict_proba(classes)
 
@@ -389,14 +393,13 @@ def paint_AUC_ROC(decision_tree: Tree, samples: List[Mushroom], classes: List[st
                 pred_y.append("p")
 
         metrics: Metrics = get_metrics(pred_true, pred_y)
-        
+
         cur_prob_thr += 0.005
 
-        tpr_scores.append(metrics.get_true_positive_rate()*1.15 - 0.14 )
+        tpr_scores.append(metrics.get_true_positive_rate()*1.15 - 0.14)
         fpr_scores.append(metrics.get_false_positive_rate()*1.82 - 0.01)
 
-    
-    plt.plot(fpr_scores, tpr_scores, lw = 2, label='ROC curve ')
+    plt.plot(fpr_scores, tpr_scores, lw=2, label='ROC curve ')
     plt.plot([0, 1], [0, 1])
     # plt.xlim([0.0, 1.05])
     # plt.ylim([0.0, 1.05])
@@ -407,15 +410,17 @@ def paint_AUC_ROC(decision_tree: Tree, samples: List[Mushroom], classes: List[st
     plt.show()
     plt.clf()
 
+
 def paint_AUC_PR(decision_tree: Tree, samples: List[Mushroom], classes: List[str]) -> None:
 
     # Листы предсказаний
-    pred_y0 = [] 
-    pred_y1 = [] 
+    pred_y0 = []
+    pred_y1 = []
     pred_true = []
 
     for sample in samples:
-        cur_tree_leave: Tree_Leave = decision_tree.decide(sample, decision_tree)
+        cur_tree_leave: Tree_Leave = decision_tree.decide(
+            sample, decision_tree)
 
         prob: Dict[str, float] = cur_tree_leave.predict_proba(classes)
 
@@ -438,19 +443,20 @@ def paint_AUC_PR(decision_tree: Tree, samples: List[Mushroom], classes: List[str
                 pred_y.append("p")
 
         metrics: Metrics = get_metrics(pred_true, pred_y)
-        
+
         cur_prob_thr += 0.005
 
         pre_scores.append(metrics.get_precision())
         rec_scores.append(metrics.get_recall())
 
-    plt.plot(rec_scores, pre_scores, lw = 2, label='PR curve ')
+    plt.plot(rec_scores, pre_scores, lw=2, label='PR curve ')
     plt.xlabel('Recall')
     plt.ylabel('Precision')
     plt.title('AUC PR')
     plt.savefig("PR.png")
     plt.show()
     plt.clf()
+
 
 def main():
     mushrooms: List[Mushroom] = list()
@@ -464,7 +470,6 @@ def main():
         mushroom_class = row[1][CLASS_COLUMN]
 
         mushrooms.append(Mushroom(mushroom_class, mushroom_attributes))
-        # Ввести массив метрик
 
     tree: Tree = Tree(mushrooms, TARGET_COLUMNS)
 
@@ -478,5 +483,6 @@ def main():
 
     paint_AUC_ROC(tree, mushrooms, CLASS_TYPES)
     paint_AUC_PR(tree, mushrooms, CLASS_TYPES)
+
 
 main()
