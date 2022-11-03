@@ -5,7 +5,7 @@ from queue import Queue
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-DATASET_PATH = "/Users/dmitry/Desktop/agaricus-lepiota.data"
+DATASET_PATH = "data/dataset.csv"
 
 TARGET_COLUMNS = ["cap-shape", "cap-color",
                   "gill-color", "veil-color", "ring-number"]
