@@ -4,6 +4,7 @@ import math
 from queue import Queue
 import seaborn as sns
 import matplotlib.pyplot as plt
+import json
 
 DATASET_PATH = "data/dataset.csv"
 
@@ -167,6 +168,10 @@ class Tree:
             None, initial_mushrooms, list_of_attributes)
         self.terminate_leaves: List[Tree_Leave] = list()
         pass
+
+    def toJSON(self) -> str:
+        return json.dumps(self, default=lambda o: o.__dict__, 
+            sort_keys=True, indent=4)
 
     # Return status of building
     def build_tree(self) -> List[Tree_Leave]:
@@ -476,6 +481,9 @@ def main():
     tree.build_tree()
 
     metrics: Metrics = get_apr(tree, mushrooms, CLASS_TYPES)
+
+    # with open('data/tree.json', 'a') as the_file:
+        # the_file.write(tree.toJSON())
 
     print("Accuracy: ", metrics.get_accuracy())
     print("Precision: ", metrics.get_precision())
